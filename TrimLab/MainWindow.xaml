@@ -1,6 +1,7 @@
 <Window x:Class="TrimLab.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Icon="/Images/timtool_32.png"
         xmlns:local="clr-namespace:TrimLab"
         Title="Sprite Tool" Width="1200" Height="760" AllowDrop="True" Drop="OnDrop" KeyDown="OnKey">
     <Window.Resources>

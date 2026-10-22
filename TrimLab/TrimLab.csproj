@@ -5,7 +5,19 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Images\trimlabicon.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Images\timtool_32.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Images\timtool_32.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\trimlabicon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
