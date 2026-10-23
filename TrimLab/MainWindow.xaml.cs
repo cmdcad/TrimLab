@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Win32;
 namespace TrimLab;
 
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
         [Tool.Pen] = "Click points; click the first point, double-click or press Enter to close. Esc cancels.",
         [Tool.Erase] = "Drag to erase. Ctrl+Z undoes a stroke.",
         [Tool.Restore] = "Drag to paint the original pixels back.",
+        [Tool.ColorErase] = "Sample color (or Alt+click), then paint: only pixels matching the sample are erased.",
         [Tool.Crop] = "Drag a rectangle, then press Crop.",
         [Tool.Slice] = "Drag the magenta lines, then press Slice.",
     };
@@ -38,7 +40,14 @@ public partial class MainWindow : Window
         };
         Editor.Edited += () =>   // editing an approved/exported image puts it back into review
         { if (Editor.Item is { Status: Status.Approved or Status.Exported } it) it.Status = Status.Cleaned; };
-        Closing += (_, _) => S.Save();
+        PanelCol.Width = new GridLength(Math.Clamp(S.PanelWidth, 180, 600));
+        Editor.Notify += t => Notice.Text = t;
+        Editor.Sampled += c =>
+        {
+            Swatch.Background = new SolidColorBrush(Color.FromRgb(c.Red, c.Green, c.Blue));
+            SampleText.Text = $"RGB {c.Red}, {c.Green}, {c.Blue}  (#{c.Red:X2}{c.Green:X2}{c.Blue:X2})";
+        };
+        Closing += (_, _) => { S.PanelWidth = PanelCol.ActualWidth; S.Save(); };
         ShowOptions(Tool.Select);
     }
 
@@ -48,7 +57,8 @@ public partial class MainWindow : Window
         bool sel = t is Tool.Select or Tool.Wand or Tool.Pen;
         PSelMode.Visibility = PSelActions.Visibility = V(sel);
         PWand.Visibility = V(t == Tool.Wand);
-        PErase.Visibility = V(t is Tool.Erase or Tool.Restore);
+        PErase.Visibility = V(t is Tool.Erase or Tool.Restore or Tool.ColorErase);
+        PColor.Visibility = V(t == Tool.ColorErase);
         PCrop.Visibility = V(t == Tool.Crop);
         PSlice.Visibility = V(t == Tool.Slice);
         Hint.Text = Hints[t];
@@ -200,6 +210,15 @@ public partial class MainWindow : Window
         S.OutW = w; S.OutH = h;
         DataContext = null; DataContext = S;
     }
+
+    void OnSample(object s, RoutedEventArgs e) => Editor.StartSampling();
+
+    void OnColorHelp(object s, RoutedEventArgs e) => MessageBox.Show(
+        "Color erase removes only pixels that match a colour you pick.\n\n" +
+        "1. Press 'Sample color' (or hold Alt and click), then click a visible pixel that has the colour to remove.\n" +
+        "2. Set Tolerance: a higher value also removes similar shades.\n" +
+        "3. Paint over the area. Only pixels under the brush that match the sample are erased.\n\n" +
+        "The swatch and RGB values show the sampled colour. Ctrl+Z undoes a stroke.", "Color erase");
 
     // ---- view / history ----
     void OnUndo(object s, RoutedEventArgs e) => Editor.Undo();

@@ -14,6 +14,8 @@ public class Settings
     public int SliceCols { get; set; } = 6;
     public int SliceRows { get; set; } = 1;
     public int FillIndex { get; set; } = 0;   // what "Keep selection" turns the outside into (0 = transparent)
+    public int ColorTol { get; set; } = 30;    // colour eraser: how close a pixel must be to the sample
+    public double PanelWidth { get; set; } = 250;
     public int WandTol { get; set; } = 30;     // colour distance for the magic wand
     public string InputFolder { get; set; } = "";
     public string OutputFolder { get; set; } = "";

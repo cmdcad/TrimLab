@@ -7,7 +7,7 @@ using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 namespace TrimLab;
 
-public enum Tool { Select, Wand, Pen, Erase, Restore, Crop, Slice }
+public enum Tool { Select, Wand, Pen, Erase, Restore, ColorErase, Crop, Slice }
 public enum SelMode { Replace, Add, Subtract }
 
 /// Zoomable canvas. Wheel = zoom at cursor, middle/right drag = pan.
@@ -29,11 +29,14 @@ public class EditorView : SKElement
     public event Action<int, int>? Cropped;     // new width, height after a crop
     public event Action? Edited;                // pixels or size changed
     public event Action<string>? Info;          // status-bar text
+    public event Action<SKColor>? Sampled;      // colour picked for the colour eraser
+    public event Action<string>? Notify;        // short messages for the status bar
     public event Action<QueueItem>? CutMade;    // "Copy to new image"
 
     float zoom = 1, panX, panY; bool fit = true;
     SKRect? crop, selRect; SKPoint? start, last; Point? panFrom; SKPoint mouse;
     readonly List<SKPoint> pen = new();
+    SKColor? sample; bool sampling;             // colour eraser state
     // selection mask: 255 = selected
     byte[]? mask; int mw, mh, selCount; SKBitmap? overlay; bool overlayDirty;
     // slice grid: inner divider positions in image pixels
@@ -285,6 +288,53 @@ public class EditorView : SKElement
         bmp.NotifyPixelsChanged();
     }
 
+    // ---- colour eraser ----
+    public void StartSampling() { sampling = true; Notify?.Invoke("Click a visible pixel to sample its colour."); InvalidateVisual(); }
+
+    void Sample(SKPoint pt)
+    {
+        var b = Shown!; int x = (int)pt.X, y = (int)pt.Y;
+        sampling = false;
+        if (x < 0 || y < 0 || x >= b.Width || y >= b.Height) return;
+        var c = b.GetPixel(x, y);
+        if (c.Alpha == 0) { Notify?.Invoke("That pixel is transparent - sample a visible pixel."); return; }
+        sample = c; Sampled?.Invoke(c); Notify?.Invoke("");
+    }
+
+    /// Erases only pixels inside the brush whose RGB is within ColorTol of the sampled colour.
+    void ColorStamp(SKPoint a, SKPoint b)
+    {
+        if (sample is not SKColor s) return;
+        var bmp = Item!.Working!;
+        int w = bmp.Width, h = bmp.Height, rb = bmp.RowBytes, tol = Cfg.ColorTol;
+        float r = Cfg.BrushSize / 2f, step = Math.Max(1, r / 2);
+        int n = Math.Max(1, (int)(SKPoint.Distance(a, b) / step));
+        var px = bmp.Bytes;
+        for (int i = 0; i <= n; i++)
+        {
+            float cx = a.X + (b.X - a.X) * i / n, cy = a.Y + (b.Y - a.Y) * i / n;
+            int x0 = Math.Max(0, (int)(cx - r)), x1 = Math.Min(w - 1, (int)(cx + r));
+            int y0 = Math.Max(0, (int)(cy - r)), y1 = Math.Min(h - 1, (int)(cy + r));
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                    if (dx * dx + dy * dy > r * r) continue;
+                    int o = y * rb + x * 4;
+                    if (px[o + 3] == 0) continue;
+                    if (Math.Abs(px[o] - s.Red) <= tol && Math.Abs(px[o + 1] - s.Green) <= tol && Math.Abs(px[o + 2] - s.Blue) <= tol)
+                    {
+                        px[o] = 0;
+                        px[o + 1] = 0;
+                        px[o + 2] = 0;
+                        px[o + 3] = 0;
+                    }
+                }
+        }
+        Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
+        bmp.NotifyPixelsChanged();
+    }
+
     // ---- mouse ----
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
@@ -300,7 +350,7 @@ public class EditorView : SKElement
         Focus();   // so Ctrl+Z etc. reach the editor instead of a text box
         if (Item == null) return;
         if (e.ChangedButton != MouseButton.Left) { panFrom = e.GetPosition(this); CaptureMouse(); return; }
-        if (ShowOriginal && (Tool == Tool.Erase || Tool == Tool.Restore)) return;
+        if (ShowOriginal && (Tool == Tool.Erase || Tool == Tool.Restore || Tool == Tool.ColorErase)) return;
         var sp = e.GetPosition(this);
         var pt = ToImg((float)sp.X * K, (float)sp.Y * K);
         var b = Shown!;
@@ -312,6 +362,10 @@ public class EditorView : SKElement
             case Tool.Slice: EnsureGrid(); (dragV, dragH) = Hit((float)sp.X * K, (float)sp.Y * K); break;
             case Tool.Erase:
             case Tool.Restore: Item.Snapshot(); last = pt; Stamp(pt, pt); break;
+            case Tool.ColorErase:
+                if (sampling || Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) { Sample(pt); break; }
+                if (sample == null) { Notify?.Invoke("Pick a colour first: press Sample color, then click a pixel."); break; }
+                Item.Snapshot(); last = pt; ColorStamp(pt, pt); break;
             case Tool.Wand:
                 int wx = (int)pt.X, wy = (int)pt.Y;
                 if (wx >= 0 && wy >= 0 && wx < b.Width && wy < b.Height) Combine(BackgroundCleaner.FloodSelect(b, wx, wy, Cfg.WandTol));
@@ -334,7 +388,7 @@ public class EditorView : SKElement
         {
             var hv = Tool == Tool.Slice && Item != null ? Hit(mouse.X, mouse.Y) : (-1, -1);
             Cursor = hv.Item1 >= 0 ? Cursors.SizeWE : hv.Item2 >= 0 ? Cursors.SizeNS
-                   : Tool is Tool.Erase or Tool.Restore or Tool.Slice ? Cursors.Arrow : Cursors.Cross;
+                   : Tool is Tool.Erase or Tool.Restore or Tool.ColorErase or Tool.Slice ? (sampling ? Cursors.Cross : Cursors.Arrow) : Cursors.Cross;
         }
         if (panFrom is Point pf)
         {
@@ -349,7 +403,8 @@ public class EditorView : SKElement
                 var rc = new SKRect(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
                 if (Tool == Tool.Crop) crop = rc; else selRect = rc;
             }
-            else if ((Tool == Tool.Erase || Tool == Tool.Restore) && last is SKPoint l) { Stamp(l, pt); last = pt; }
+            else if ((Tool == Tool.Erase || Tool == Tool.Restore || Tool == Tool.ColorErase) && last is SKPoint l)
+            { if (Tool == Tool.ColorErase) ColorStamp(l, pt); else Stamp(l, pt); last = pt; }
             else if (Tool == Tool.Slice)
             {
                 if (dragV >= 0)
@@ -442,11 +497,31 @@ public class EditorView : SKElement
         }
         c.Restore();
 
-        if ((Tool == Tool.Erase || Tool == Tool.Restore) && IsMouseOver)
+        if ((Tool is Tool.Erase or Tool.Restore or Tool.ColorErase) && IsMouseOver && !sampling)
         {
-            using var ring = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true,
-                Color = Tool == Tool.Erase ? SKColors.Red : SKColors.LimeGreen };
-            c.DrawCircle(mouse.X, mouse.Y, Cfg.BrushSize / 2f * zoom, ring);
+            float rad = Cfg.BrushSize / 2f * zoom;
+            if (Tool == Tool.ColorErase)
+            {   // orange dashed ring + crosshair + a swatch of the sampled colour, so it can't be mistaken for the plain eraser
+                using var dash2 = SKPathEffect.CreateDash(new[] { 5f, 4f }, 0);
+                using var ring2 = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true, Color = SKColors.Orange, PathEffect = dash2 };
+                using var cross = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true, Color = SKColors.Orange };
+                c.DrawCircle(mouse.X, mouse.Y, rad, ring2);
+                c.DrawLine(mouse.X - 6, mouse.Y, mouse.X + 6, mouse.Y, cross);
+                c.DrawLine(mouse.X, mouse.Y - 6, mouse.X, mouse.Y + 6, cross);
+                if (sample is SKColor sc)
+                {
+                    using var swatch = new SKPaint { Color = sc };
+                    using var rim = new SKPaint { Style = SKPaintStyle.Stroke, Color = SKColors.Black, StrokeWidth = 1 };
+                    var box = new SKRect(mouse.X + rad + 6, mouse.Y - 8, mouse.X + rad + 22, mouse.Y + 8);
+                    c.DrawRect(box, swatch); c.DrawRect(box, rim);
+                }
+            }
+            else
+            {
+                using var ring = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true,
+                    Color = Tool == Tool.Erase ? SKColors.Red : SKColors.LimeGreen };
+                c.DrawCircle(mouse.X, mouse.Y, rad, ring);
+            }
         }
     }
 }

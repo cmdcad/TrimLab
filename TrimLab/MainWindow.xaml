@@ -61,6 +61,14 @@
                     <Slider Minimum="1" Maximum="100" Value="{Binding BrushSize}" Width="180" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding BrushSize, StringFormat=Size: {0} px}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
+                <StackPanel x:Name="PColor" Orientation="Horizontal" Margin="14,0,0,0">
+                    <Button Content="Sample color" Click="OnSample" ToolTip="Then click a visible pixel (or hold Alt and click at any time)"/>
+                    <Border x:Name="Swatch" Width="22" Height="22" BorderBrush="Gray" BorderThickness="1" Background="Transparent" Margin="0,0,6,0"/>
+                    <TextBlock x:Name="SampleText" Text="no color sampled" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Text="Tolerance " VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding ColorTol}" Width="40" Margin="0,0,8,0"/>
+                    <Button Content="How to use" Click="OnColorHelp"/>
+                </StackPanel>
                 <StackPanel x:Name="PCrop" Orientation="Horizontal">
                     <Button Content="Crop" Click="OnCrop"/>
                     <Button Content="Crop all (same size)" Click="OnCropAll"/>
@@ -83,19 +91,25 @@
             <StatusBarItem><TextBlock x:Name="Info"/></StatusBarItem>
         </StatusBar>
 
+        <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="5"/>
+            <ColumnDefinition x:Name="PanelCol" Width="250" MinWidth="180" MaxWidth="600"/>
+        </Grid.ColumnDefinitions>
         <!-- toolbox -->
-        <StackPanel DockPanel.Dock="Left" Width="86" Margin="6">
+        <StackPanel Grid.Column="0" Width="96" Margin="6">
             <RadioButton Content="Select" Tag="Select" ToolTip="Rectangle select" GroupName="t" IsChecked="True" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Wand" Tag="Wand" ToolTip="Select similar connected pixels" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Pen" Tag="Pen" ToolTip="Polygon select" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Eraser" Tag="Erase" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Restore" Tag="Restore" ToolTip="Paint original pixels back" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Color erase" Tag="ColorErase" ToolTip="Erase only pixels matching a sampled colour" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Crop" Tag="Crop" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
             <RadioButton Content="Slice" Tag="Slice" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
         </StackPanel>
 
         <!-- queue + settings -->
-        <Grid DockPanel.Dock="Right" Width="250" Margin="0,6,6,6">
+        <Grid Grid.Column="3" Margin="0,6,6,6">
             <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="Queue (drop files or folders anywhere)" FontWeight="Bold" Margin="0,0,0,4"/>
@@ -116,6 +130,8 @@
             </Expander>
         </Grid>
 
-        <local:EditorView x:Name="Editor"/>
+        <local:EditorView Grid.Column="1" x:Name="Editor"/>
+        <GridSplitter Grid.Column="2" Width="5" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext" Background="#DDD" ToolTip="Drag to resize the panel"/>
+        </Grid>
     </DockPanel>
 </Window>
