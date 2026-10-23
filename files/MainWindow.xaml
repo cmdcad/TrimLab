@@ -1,0 +1,121 @@
+<Window x:Class="TrimLab.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:TrimLab"
+        Title="TrimLab" Width="1280" Height="800" AllowDrop="True" Drop="OnDrop" PreviewKeyDown="OnKey">
+    <Window.Resources>
+        <Style TargetType="Button"><Setter Property="Padding" Value="8,3"/><Setter Property="Margin" Value="0,0,6,0"/></Style>
+        <Style x:Key="ToolBtn" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Padding" Value="4,8"/><Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <!-- project bar -->
+        <Border DockPanel.Dock="Top" Padding="6" BorderBrush="#DDD" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Undo" ToolTip="Ctrl+Z" Click="OnUndo"/>
+                    <Button Content="Redo" ToolTip="Ctrl+Y" Click="OnRedo"/>
+                    <Button Content="Fit" Click="OnFit"/><Button Content="100%" Click="On100"/>
+                    <Button Content="+" Click="OnZoomIn"/><Button Content="−" Click="OnZoomOut"/>
+                    <CheckBox x:Name="ShowOrig" Content="Show original" VerticalAlignment="Center" Click="OnShowOrig"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Open files…" Click="OpenFiles"/>
+                    <Button Content="Open folder…" Click="OpenFolder"/>
+                    <Button Content="Auto-clean all" Click="CleanAll" ToolTip="Remove the checkerboard background from every pending image"/>
+                    <Button Content="Re-clean selected" Click="CleanSelected"/>
+                    <Button Content="Approve" Click="Approve"/>
+                    <Button Content="Approve all" Click="ApproveAll"/>
+                    <Button Content="Export approved" Click="Export" FontWeight="Bold"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- tool options: changes with the active tool -->
+        <Border DockPanel.Dock="Top" Padding="6" Background="#F3F3F3" BorderBrush="#DDD" BorderThickness="0,0,0,1">
+            <WrapPanel VerticalAlignment="Center">
+                <StackPanel x:Name="PSelMode" Orientation="Horizontal" Margin="0,0,14,0">
+                    <RadioButton Content="New" Tag="Replace" GroupName="m" IsChecked="True" Checked="OnMode" Margin="0,0,8,0"/>
+                    <RadioButton Content="Add (Shift)" Tag="Add" GroupName="m" Checked="OnMode" Margin="0,0,8,0"/>
+                    <RadioButton Content="Subtract (Alt)" Tag="Subtract" GroupName="m" Checked="OnMode"/>
+                </StackPanel>
+                <StackPanel x:Name="PWand" Orientation="Horizontal" Margin="0,0,14,0">
+                    <TextBlock Text="Tolerance " VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding WandTol}" Width="40"/>
+                </StackPanel>
+                <StackPanel x:Name="PSelActions" Orientation="Horizontal">
+                    <Button Content="Keep selection" Click="OnKeep" ToolTip="Remove everything outside the selection"/>
+                    <Button Content="Delete selection" Click="OnDelete" ToolTip="Del"/>
+                    <Button Content="Invert" Click="OnInvert"/>
+                    <Button Content="Select all" Click="OnSelAll" ToolTip="Ctrl+A"/>
+                    <Button Content="Deselect" Click="OnDeselect" ToolTip="Ctrl+D"/>
+                    <Button Content="Copy to new image" Click="OnToNew"/>
+                    <TextBlock Text="Outside becomes " VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    <ComboBox Width="110" SelectedIndex="{Binding FillIndex}">
+                        <ComboBoxItem Content="Transparent"/><ComboBoxItem Content="White"/><ComboBoxItem Content="Black"/>
+                        <ComboBoxItem Content="Magenta"/><ComboBoxItem Content="Green"/>
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel x:Name="PErase" Orientation="Horizontal">
+                    <Slider Minimum="1" Maximum="100" Value="{Binding BrushSize}" Width="180" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding BrushSize, StringFormat=Size: {0} px}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel x:Name="PCrop" Orientation="Horizontal">
+                    <Button Content="Crop" Click="OnCrop"/>
+                    <Button Content="Crop all (same size)" Click="OnCropAll"/>
+                    <Button Content="Reset crop" Click="OnResetCrop"/>
+                </StackPanel>
+                <StackPanel x:Name="PSlice" Orientation="Horizontal">
+                    <TextBox Text="{Binding SliceCols, UpdateSourceTrigger=PropertyChanged}" Width="40" TextChanged="OnGridChanged"/>
+                    <TextBlock Text=" × " VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding SliceRows, UpdateSourceTrigger=PropertyChanged}" Width="40" TextChanged="OnGridChanged" Margin="0,0,8,0"/>
+                    <Button Content="Even lines" Click="OnResetGrid"/>
+                    <Button Content="Slice" Click="OnSlice"/>
+                    <Button Content="Unslice" Click="OnUnslice"/>
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem DockPanel.Dock="Right"><TextBlock x:Name="Hint" Foreground="Gray"/></StatusBarItem>
+            <StatusBarItem DockPanel.Dock="Right"><TextBlock x:Name="Notice" Foreground="DarkGreen" Margin="0,0,16,0"/></StatusBarItem>
+            <StatusBarItem><TextBlock x:Name="Info"/></StatusBarItem>
+        </StatusBar>
+
+        <!-- toolbox -->
+        <StackPanel DockPanel.Dock="Left" Width="86" Margin="6">
+            <RadioButton Content="Select" Tag="Select" ToolTip="Rectangle select" GroupName="t" IsChecked="True" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Wand" Tag="Wand" ToolTip="Select similar connected pixels" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Pen" Tag="Pen" ToolTip="Polygon select" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Eraser" Tag="Erase" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Restore" Tag="Restore" ToolTip="Paint original pixels back" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Crop" Tag="Crop" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+            <RadioButton Content="Slice" Tag="Slice" GroupName="t" Style="{StaticResource ToolBtn}" Checked="OnTool"/>
+        </StackPanel>
+
+        <!-- queue + settings -->
+        <Grid DockPanel.Dock="Right" Width="250" Margin="0,6,6,6">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Queue (drop files or folders anywhere)" FontWeight="Bold" Margin="0,0,0,4"/>
+                <ListBox x:Name="List" DisplayMemberPath="Display" SelectionChanged="OnSelect"/>
+            </DockPanel>
+            <Expander Grid.Row="1" Header="Settings" IsExpanded="True" Margin="0,8,0,0">
+                <StackPanel Margin="0,4,0,0">
+                    <CheckBox Content="Auto-set size on crop / slice" IsChecked="{Binding AutoSize}" Margin="0,2"/>
+                    <CheckBox Content="Allow upscaling on export" IsChecked="{Binding AllowUpscale}" Margin="0,2,0,4"/>
+                    <TextBlock Text="Output width"/><TextBox Text="{Binding OutW}"/>
+                    <TextBlock Text="Output height" Margin="0,4,0,0"/><TextBox Text="{Binding OutH}"/>
+                    <TextBlock Text="Auto-clean tolerance" Margin="0,4,0,0"/><TextBox Text="{Binding Tolerance}"/>
+                    <TextBlock Text="Auto-clean edge grow (px)" Margin="0,4,0,0"/><TextBox Text="{Binding Grow}"/>
+                    <TextBlock Text="Output folder" Margin="0,4,0,0"/>
+                    <TextBox Text="{Binding OutputFolder}" TextWrapping="Wrap"/>
+                    <Button Content="Browse…" Click="PickOutput" Margin="0,4,0,0" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Expander>
+        </Grid>
+
+        <local:EditorView x:Name="Editor"/>
+    </DockPanel>
+</Window>

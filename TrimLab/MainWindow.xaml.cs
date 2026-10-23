@@ -1,5 +1,5 @@
-using System.IO;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -12,6 +12,17 @@ public partial class MainWindow : Window
     readonly ObservableCollection<QueueItem> Q = new();
     static readonly string[] Exts = { ".png", ".jpg", ".jpeg", ".bmp", ".webp" };
 
+    static readonly Dictionary<Tool, string> Hints = new()
+    {
+        [Tool.Select] = "Drag a rectangle. Click empty space to deselect.",
+        [Tool.Wand] = "Click to select similar connected pixels.",
+        [Tool.Pen] = "Click points; click the first point, double-click or press Enter to close. Esc cancels.",
+        [Tool.Erase] = "Drag to erase. Ctrl+Z undoes a stroke.",
+        [Tool.Restore] = "Drag to paint the original pixels back.",
+        [Tool.Crop] = "Drag a rectangle, then press Crop.",
+        [Tool.Slice] = "Drag the magenta lines, then press Slice.",
+    };
+
     public MainWindow()
     {
         InitializeComponent();
@@ -20,9 +31,27 @@ public partial class MainWindow : Window
         Editor.Cfg = S;
         Editor.Info += t => Info.Text = t;
         Editor.Cropped += ApplyAutoSize;
+        Editor.CutMade += it =>
+        {
+            Q.Insert(Math.Max(0, Q.IndexOf(Editor.Item!)) + 1, it);
+            Notice.Text = $"Added {Path.GetFileName(it.FilePath)} to the queue";
+        };
         Editor.Edited += () =>   // editing an approved/exported image puts it back into review
         { if (Editor.Item is { Status: Status.Approved or Status.Exported } it) it.Status = Status.Cleaned; };
         Closing += (_, _) => S.Save();
+        ShowOptions(Tool.Select);
+    }
+
+    void ShowOptions(Tool t)
+    {
+        static Visibility V(bool b) => b ? Visibility.Visible : Visibility.Collapsed;
+        bool sel = t is Tool.Select or Tool.Wand or Tool.Pen;
+        PSelMode.Visibility = PSelActions.Visibility = V(sel);
+        PWand.Visibility = V(t == Tool.Wand);
+        PErase.Visibility = V(t is Tool.Erase or Tool.Restore);
+        PCrop.Visibility = V(t == Tool.Crop);
+        PSlice.Visibility = V(t == Tool.Slice);
+        Hint.Text = Hints[t];
     }
 
     // ---- queue ----
@@ -60,50 +89,6 @@ public partial class MainWindow : Window
 
     void OnSelect(object s, SelectionChangedEventArgs e) => Editor.Item = List.SelectedItem as QueueItem;
 
-    void OnBatchSlice(object s, RoutedEventArgs e)
-    {
-        if (Editor.Item == null) { msgs.Text = "Select an image and position the splitter first."; return; }
-        var ratios = Editor.SliceRatios();
-        if (ratios.X.Length != 1 || ratios.Y.Length != 0)
-        {
-            msgs.Text = "Batch keep options require a 2 � 1 slice grid.";
-            return;
-        }
-
-        var targets = SliceScope.SelectedValue?.ToString() == "all"
-            ? Q.ToList()
-            : List.SelectedItems.Cast<QueueItem>().ToList();
-        if (targets.Count == 0) targets.Add(Editor.Item);
-
-        int? keep = SliceKeep.SelectedValue?.ToString() switch
-        {
-            "left" => 0,
-            "right" => 1,
-            _ => null
-        };
-        int changed = 0;
-        foreach (var target in targets.ToList())
-        {
-            int at = Q.IndexOf(target);
-            if (at < 0) continue;
-            var parts = target.Slice(EditorView.SliceCellsFor(target.Original.Width, target.Original.Height, ratios.X, ratios.Y), keep);
-            Q.RemoveAt(at);
-            for (int i = 0; i < parts.Count; i++) Q.Insert(at + i, parts[i]);
-            changed++;
-        }
-        if (Q.Count > 0) List.SelectedIndex = Math.Min(0, Q.Count - 1);
-        msgs.Text = $"Applied splitter to {changed} image(s).";
-    }
-
-    void ClearQueue(object s, RoutedEventArgs e)
-    {
-        int count = Q.Count;
-        Editor.Item = null;
-        Q.Clear();
-        List.SelectedIndex = -1;
-        msgs.Text = count == 0 ? "Queue is already empty." : $"Removed {count} file(s) from the queue. Original files were not deleted.";
-    }
-
     // ---- clean / review / export ----
     void Clean(QueueItem i)
     {
@@ -140,60 +125,40 @@ public partial class MainWindow : Window
     void Export(object s, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(S.OutputFolder)) { PickOutput(s, e); if (string.IsNullOrWhiteSpace(S.OutputFolder)) return; }
-        var ready = Q.Where(i => i.Status is Status.Approved or Status.Exported).ToList();
+        var ready = Q.Where(i => i.Status == Status.Approved).ToList();
         SpriteExporter.ExportAll(ready, S);
         foreach (var i in ready) i.Status = Status.Exported;
-        msgs.Text = $"Exported {ready.Count} file(s) to {S.OutputFolder}";
+        MessageBox.Show($"Exported {ready.Count} file(s) to {S.OutputFolder}");
     }
 
-    // ---- editor controls ----
+    // ---- tools ----
     void OnTool(object s, RoutedEventArgs e)
     {
         if (Editor == null) return;
-        Editor.Tool = Enum.Parse<Tool>((string)((RadioButton)s).Tag);
-        Editor.InvalidateVisual();
+        var t = Enum.Parse<Tool>((string)((RadioButton)s).Tag);
+        Editor.Tool = t; ShowOptions(t);
     }
 
+    void OnMode(object s, RoutedEventArgs e)
+    {
+        if (Editor == null) return;
+        Editor.Mode = Enum.Parse<SelMode>((string)((RadioButton)s).Tag);
+    }
+
+    void OnKeep(object s, RoutedEventArgs e) => Editor.KeepSelected();
+    void OnDelete(object s, RoutedEventArgs e) => Editor.DeleteSelected();
+    void OnInvert(object s, RoutedEventArgs e) => Editor.Invert();
+    void OnSelAll(object s, RoutedEventArgs e) => Editor.SelectAll();
+    void OnDeselect(object s, RoutedEventArgs e) => Editor.Deselect();
+    void OnToNew(object s, RoutedEventArgs e) => Editor.CopyToNewImage();
+
     void OnCrop(object s, RoutedEventArgs e) => Editor.ApplyCrop();
+    void OnResetCrop(object s, RoutedEventArgs e) => Editor.ResetCrop();
 
     void OnCropAll(object s, RoutedEventArgs e)
     {
         int n = Editor.ApplyCrop(Q);
-        if (n > 0) msgs.Text = $"Cropped {n} image(s) of the same size.";
-    }
-
-    void OnFixedCrop(object s, RoutedEventArgs e)
-    {
-        if (S.CropW < 1 || S.CropH < 1)
-        {
-            msgs.Text = "Enter a crop width and height first.";
-            return;
-        }
-
-        var targets = CropScope.SelectedValue?.ToString() == "all"
-            ? Q.ToList()
-            : List.SelectedItems.Cast<QueueItem>().ToList();
-        if (targets.Count == 0 && Editor.Item != null) targets.Add(Editor.Item);
-
-        int cropped = 0, skipped = 0;
-        foreach (var item in targets.Distinct())
-        {
-            if (item.Original.Width < S.CropW || item.Original.Height < S.CropH)
-            {
-                skipped++;
-                continue;
-            }
-
-            int left = (item.Original.Width - S.CropW) / 2;
-            int top = (item.Original.Height - S.CropH) / 2;
-            item.Crop(new SkiaSharp.SKRectI(left, top, left + S.CropW, top + S.CropH));
-            cropped++;
-        }
-
-        if (cropped > 0) Editor.Fit();
-        msgs.Text = skipped == 0
-            ? $"Applied a centred {S.CropW} � {S.CropH} crop to {cropped} image(s)."
-            : $"Cropped {cropped} image(s); skipped {skipped} image(s) smaller than {S.CropW} � {S.CropH}.";
+        if (n > 0) Notice.Text = $"Cropped {n} image(s) of the same size";
     }
 
     void OnSlice(object s, RoutedEventArgs e)
@@ -235,7 +200,8 @@ public partial class MainWindow : Window
         S.OutW = w; S.OutH = h;
         DataContext = null; DataContext = S;
     }
-    void OnResetCrop(object s, RoutedEventArgs e) => Editor.ResetCrop();
+
+    // ---- view / history ----
     void OnUndo(object s, RoutedEventArgs e) => Editor.Undo();
     void OnRedo(object s, RoutedEventArgs e) => Editor.Redo();
     void OnFit(object s, RoutedEventArgs e) => Editor.Fit();
@@ -249,10 +215,19 @@ public partial class MainWindow : Window
         Editor.RefreshInfo(); Editor.InvalidateVisual();
     }
 
+    /// Runs before any control sees the key, so shortcuts work whatever has focus (except text boxes).
     void OnKey(object s, KeyEventArgs e)
     {
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z) Editor.Undo();
-        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Y) Editor.Redo();
-        else if (e.Key == Key.Escape) Editor.ClearSelection();
+        if (Keyboard.FocusedElement is TextBox) return;
+        bool ctrl = Keyboard.Modifiers == ModifierKeys.Control;
+        if (ctrl && e.Key == Key.Z) Editor.Undo();
+        else if (ctrl && e.Key == Key.Y) Editor.Redo();
+        else if (ctrl && e.Key == Key.A) Editor.SelectAll();
+        else if (ctrl && e.Key == Key.D) Editor.Deselect();
+        else if (e.Key == Key.Delete) Editor.DeleteSelected();
+        else if (e.Key == Key.Enter) Editor.ClosePen();
+        else if (e.Key == Key.Escape) Editor.Cancel();
+        else return;
+        e.Handled = true;
     }
 }

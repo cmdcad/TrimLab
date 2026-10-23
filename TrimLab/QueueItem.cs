@@ -38,19 +38,18 @@ public class QueueItem : INotifyPropertyChanged
         Source = Original = bmp;
     }
 
+    public int Children { get; set; }                     // numbering for "Copy to new image"
     public QueueItem? SliceParent { get; private set; }   // the image this was sliced from (for Unslice)
 
     /// Cuts the current image (and its cleaned copy, if any) into the given cells. This item is left untouched.
-    public List<QueueItem> Slice(IEnumerable<SKRectI> cells, int? keepIndex = null)
+    public List<QueueItem> Slice(IEnumerable<SKRectI> cells)
     {
         string stem = Path.GetFileNameWithoutExtension(FilePath);
         int n = 0;
         var list = new List<QueueItem>();
         foreach (var rect in cells)
         {
-            int index = n++;
-            if (keepIndex.HasValue && index != keepIndex.Value) continue;
-            var item = new QueueItem(Sub(Original, rect), $"{stem}_{index + 1:00}.png") { SliceParent = this };
+            var item = new QueueItem(Sub(Original, rect), $"{stem}_{++n:00}.png") { SliceParent = this };
             if (Working != null) { item.Working = Sub(Working, rect); item.Status = Status.Cleaned; }
             list.Add(item);
         }

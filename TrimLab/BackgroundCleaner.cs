@@ -59,36 +59,36 @@ public static class BackgroundCleaner
         return bmp;
     }
 
-    /// Magic wand: clears the contiguous region around (sx, sy) whose colour is within `tol` of the clicked pixel.
-    public static void FloodClear(SKBitmap bmp, int sx, int sy, int tol)
+    /// Magic wand: returns a mask (255 = selected) of the connected region around (sx, sy)
+    /// whose RGBA values are all within `tol` of the clicked pixel.
+    public static byte[] FloodSelect(SKBitmap src, int sx, int sy, int tol)
     {
+        using var bmp = src.Copy(SKColorType.Rgba8888);
         int w = bmp.Width, h = bmp.Height;
         var px = bmp.Bytes;
+        var mask = new byte[w * h];
         int s = (sy * w + sx) * 4;
-        if (px[s + 3] == 0) return;
-        int r0 = px[s], g0 = px[s + 1], b0 = px[s + 2];
-        var seen = new bool[w * h];
+        int r0 = px[s], g0 = px[s + 1], b0 = px[s + 2], a0 = px[s + 3];
         var q = new Queue<int>();
-        seen[sy * w + sx] = true; q.Enqueue(sy * w + sx);
+        mask[sy * w + sx] = 255; q.Enqueue(sy * w + sx);
 
         void Try(int n)
         {
-            if (seen[n]) return;
+            if (mask[n] != 0) return;
             int p = n * 4;
-            if (px[p + 3] == 0) return;
-            if (Math.Abs(px[p] - r0) <= tol && Math.Abs(px[p + 1] - g0) <= tol && Math.Abs(px[p + 2] - b0) <= tol)
-            { seen[n] = true; q.Enqueue(n); }
+            if (Math.Abs(px[p] - r0) <= tol && Math.Abs(px[p + 1] - g0) <= tol &&
+                Math.Abs(px[p + 2] - b0) <= tol && Math.Abs(px[p + 3] - a0) <= tol)
+            { mask[n] = 255; q.Enqueue(n); }
         }
 
         while (q.Count > 0)
         {
-            int i = q.Dequeue(), x = i % w, y = i / w, o = i * 4;
-            px[o] = px[o + 1] = px[o + 2] = px[o + 3] = 0;
+            int i = q.Dequeue(), x = i % w, y = i / w;
             if (x > 0) Try(i - 1);
             if (x < w - 1) Try(i + 1);
             if (y > 0) Try(i - w);
             if (y < h - 1) Try(i + w);
         }
-        Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
+        return mask;
     }
 }

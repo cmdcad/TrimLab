@@ -11,11 +11,9 @@ public class Settings
     public int BrushSize { get; set; } = 12;
     public bool AutoSize { get; set; } = true;       // set output size to the crop / slice size
     public bool AllowUpscale { get; set; } = false;  // false = never enlarge sprites on export
-    public float Zoom { get; set; }
     public int SliceCols { get; set; } = 6;
     public int SliceRows { get; set; } = 1;
-    public int CropW { get; set; }
-    public int CropH { get; set; }
+    public int FillIndex { get; set; } = 0;   // what "Keep selection" turns the outside into (0 = transparent)
     public int WandTol { get; set; } = 30;     // colour distance for the magic wand
     public string InputFolder { get; set; } = "";
     public string OutputFolder { get; set; } = "";
